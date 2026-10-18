@@ -4,3 +4,4 @@ dist/
 dev-dist/
 .vercel/
 *.log
+tsconfig.tsbuildinfo
