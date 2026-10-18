@@ -1,41 +1,41 @@
 # Poker Table Helper
 
-A phone-first web app for home poker games. Mark each player's action with big
-buttons; it tracks the pot and turn order, asks for the flop/turn/river, and keeps
-a live **what to do** pill (Fold / Check / Call / Raise) plus your **win chance**
-pinned at the top.
+A phone-first web app for home poker games. Log each player's move with big buttons;
+it tracks chips, pots and turn order, asks for the flop / turn / river, and keeps four
+Apple-Watch-style complications pinned on top — **Win %, pot odds needed, EV of the best
+move, SPR / hand strength** — while the best move glows on the button itself.
 
-No build step: plain HTML, CSS and JavaScript.
+Built for iPhone (tested at 402 × 874 pt and Safari's ~700 pt). Add it to the Home Screen
+for full-screen, offline use; the screen stays awake during a game.
 
-## Files
+## The maths (src/engine)
 
-| File | What it does |
+| Piece | How |
 | --- | --- |
-| `index.html` | Page shell, fonts |
-| `styles.css` | All styling (dark card-room theme) |
-| `engine.js` | 7-card hand evaluator, starting-hand ranks, Monte Carlo win chance |
-| `app.js` | Screens, hand state machine, advice rules, raise "rubber band" |
-| `tests/engine.test.js` | `node tests/engine.test.js` — evaluator and equity sanity checks |
-| `mockups/` | Approved SVG screen designs |
+| Hand evaluator | Bitmask best-5-of-7. Checked against all **133,784,560** seven-card hands (`npm run test:exhaustive`) — every category count matches the published exact totals. |
+| Win % | One opponent after the flop: **exact** — every remaining card vs every hand in their range. Otherwise Monte Carlo until the standard error is under ±0.4%. Runs in a Web Worker. |
+| Opponent ranges | Start from each player's VPIP / PFR (home-game priors, shrunk toward their real numbers as hands are logged). Every postflop bet / call / check re-weights each possible hand by how likely it is to take that action, using hand strength now plus after the next card — Billings et al.'s Effective Hand Strength idea (Alberta Poki). |
+| Folds | Game-theory minimum defence frequency (fold share = bet ÷ (pot + bet)), scaled by each player's observed fold rate. |
+| EV | Per action and per raise size, vs folding now, over the current betting round: call = win × (pot + call) − call; raise = P(all fold) × pot + P(called) × (win vs calling ranges × final pot − chips risked). |
 
-## Run locally
+All behavioural assumptions live in `ASSUME` in `src/engine/model.ts`.
+Limits: single-street EV (later streets aren't simulated); not a solver.
 
-Open `index.html` in a browser, or serve the folder: `npx serve .`
+## The rules (src/game/rules.ts)
 
-## Deploy
+Event-sourced no-limit hold'em: blinds (heads-up dealer = SB), min-raise = last full raise,
+short all-ins don't reopen betting (TDA 37-B; cumulative short raises do), side pots,
+uncalled chips returned, odd chip to the first winner left of the button, all-in runouts,
+rebuys. Undo = drop the last event.
 
-It's a static site, so Vercel needs no settings: import the repo (framework
-preset **Other**, no build command, output directory `.`) or run `npx vercel`
-in this folder. Every push to `main` redeploys.
+## Develop
 
-## How the advice works
+```
+npm install
+npm run dev            # local
+npm test               # unit tests (rules + engine)
+npm run test:exhaustive  # 133M-hand evaluator check (~25 s)
+npm run build          # production build + PWA service worker
+```
 
-- **Win chance**: thousands of simulated runouts against the players still in.
-  Opponent ranges come from their preflop action (raised → top 15%,
-  re-raised → top 6%, called a raise → top 30%, limped → top 55%, else any two).
-  Preflop it only counts players who've put chips in voluntarily.
-- **Preflop**: hand rank (top X% of starting hands) vs a threshold that tightens
-  with more players left to act; re-raise premium hands, call when the price works.
-- **Postflop**: pot odds. Need = call ÷ (pot + call). Call above it, raise when
-  well clear, bet ⅔ pot when checked to with a strong hand.
-- **Limits**: no stacks, no implied odds or bluffs, no postflop range narrowing.
+Deploys on Vercel as a Vite app (auto-detected, output `dist`).
